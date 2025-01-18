@@ -1,8 +1,16 @@
 program test;
-const tab:array = [1,2];
-var name:string; x:integer;
+var
+    a: integer, b: integer, c: integer;
 begin
- name := "ALAN";
- x := tab[1];
+    a := 13;
+    b := 12;
+    c := 15;
 
+    if a > b then
+begin
+    if b > c then
+        write(b)
+    else
+        write(a);
+end
 end.

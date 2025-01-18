@@ -3,9 +3,9 @@
 #include <string.h>
 #include <ctype.h>
 
-#define TABLEINDEX 100
-#define TAILLEMEM 100
-#define TAILLECODE 100
+#define TABLEINDEX 512
+#define TAILLEMEM 512
+#define TAILLECODE 512
 
 typedef enum
 {
@@ -544,10 +544,6 @@ void lire_mot()
     {
         SYM_COUR.CODE = FLOAT_TOKEN; // 1
     }
-    else if (stricmp(mot, "boolean") == 0)
-    {
-        SYM_COUR.CODE = BOOLEAN_TOKEN; // 2
-    }
     else if (stricmp(mot, "string") == 0)
     {
         SYM_COUR.CODE = STRING_TOKEN; // 3
@@ -559,12 +555,16 @@ void lire_mot()
     else if (stricmp(mot, "true") == 0)
     {
         SYM_COUR.CODE = BOOLEAN_DATA_TOKEN;
-        SYM_COUR.val = 1;
+        SYM_COUR.val = 1; // Represent true as 1
     }
     else if (stricmp(mot, "false") == 0)
     {
         SYM_COUR.CODE = BOOLEAN_DATA_TOKEN;
-        SYM_COUR.val = 0;
+        SYM_COUR.val = 0; // Represent false as 0
+    }
+    else if (stricmp(mot, "boolean") == 0)
+    {
+        SYM_COUR.CODE = BOOLEAN_TOKEN;
     }
     else
     {
@@ -670,6 +670,8 @@ void TYPE(int isIntitlized)
         {
             Test_Symbole(EG_TOKEN, EG_ERR);
             Test_Symbole(BOOLEAN_DATA_TOKEN, BOOLEAN_DATA_ERR);
+            GENERER2(LDI, SYM_COUR.val); // Load boolean value
+            GENERER1(STO);               // Store the value
             Test_Symbole(PV_TOKEN, PV_ERR);
         }
         break;
@@ -701,8 +703,8 @@ void TYPE(int isIntitlized)
                 Test_Symbole(INTEGER_DATA_TOKEN, INTEGER_DATA_ERR);
             }
             Test_Symbole(SQUARE_BRACKET_CLOSE_TOKEN, SQUARE_BRACKET_CLOSE_ERR);
-            
-            //Test_Symbole(ARRAY_DATA_TOKEN, ARRAY_DATA_ERR);
+
+            // Test_Symbole(ARRAY_DATA_TOKEN, ARRAY_DATA_ERR);
             Test_Symbole(PV_TOKEN, PV_ERR);
         }
         break;
@@ -891,7 +893,7 @@ void Sym_Suiv()
             Lire_Car();
             Sym_Suiv();
             break;
-            
+
         case ';':
             SYM_COUR.CODE = PV_TOKEN;
             Lire_Car();
@@ -1239,7 +1241,6 @@ void INTER_INST(INSTRUCTION INST)
         break;
     }
 
-    
     // int i;
     // for (i = 0; i < SP; i++)
     // {
@@ -1405,8 +1406,6 @@ void INSTS()
         {
             Sym_Suiv();
             printf("Le programme est correcte!\n");
-            // printf("Current Token: %d\n", SYM_COUR.CODE);
-            // printf("Current Lexeme: %s\n", SYM_COUR.NOM);
         }
         else
         {
@@ -1419,8 +1418,9 @@ void INSTS()
     }
 }
 
-void INST()
 
+
+void INST()
 {
     // INSTS | AFFEC | SI | TANTQUE | ECRIRE | LIRE | e
     switch (SYM_COUR.CODE)
@@ -1437,7 +1437,7 @@ void INST()
     case WHILE_TOKEN:
         TANTQUE();
         break;
-    case ECRIRE_LN_TOKEN:   
+    case ECRIRE_LN_TOKEN:
     case WRITE_TOKEN:
         ECRIRE();
         break;
@@ -1457,6 +1457,8 @@ void INST()
         break;
     }
 }
+
+
 
 void AFFEC()
 {
@@ -1504,21 +1506,41 @@ void AFFEC()
 
 void SI()
 {
-    Test_Symbole(IF_TOKEN, IF_ERR);
-    COND();
-    GENERER1(BZE);
-    IND_BZE = PC;
-    Test_Symbole(THEN_TOKEN, THEN_ERR);
+    printf("Entering SI (if statement)\n");
+    Test_Symbole(IF_TOKEN, IF_ERR); // Ensure the current token is 'if'
+    COND();                         // Parse the condition
+    printf("Condition parsed. Current Token: %d, Lexeme: %s\n", SYM_COUR.CODE, SYM_COUR.NOM);
+    Test_Symbole(THEN_TOKEN, THEN_ERR); // Ensure the current token is 'then'
+    printf("Handling THEN_TOKEN\n");
+
+    // Generate code to branch if the condition is false
+    GENERER1(BZE);  // Branch if zero (false)
+    IND_BZE = PC;   // Save the address of the BZE instruction
+    GENERER2(0, 0); // Placeholder for the branch address (to be filled later)
+
+    // Parse the statement(s) to execute if the condition is true
     INST();
-    GENERER1(BRN);
-    INDICE_BRN = PC;
+    printf("Statement after THEN parsed. Current Token: %d, Lexeme: %s\n", SYM_COUR.CODE, SYM_COUR.NOM);
+
+    // Fill in the branch address for the BZE instruction
     PCODE[IND_BZE].SUITE = PC + 1;
+
+    // Handle the 'else' part if it exists
     if (SYM_COUR.CODE == ELSE_TOKEN)
     {
-        Sym_Suiv();
+        printf("Handling ELSE_TOKEN\n");
+        Sym_Suiv();      // Move past the 'else' token
+        GENERER1(BRN);   // Branch to skip the 'else' block
+        INDICE_BRN = PC; // Save the address of the BRN instruction
+        GENERER2(0, 0);  // Placeholder for the branch address (to be filled later)
+
+        // Parse the statement(s) to execute in the 'else' block
         INST();
+
+        // Fill in the branch address for the BRN instruction
         PCODE[INDICE_BRN].SUITE = PC + 1;
     }
+    printf("Exiting SI (if statement)\n");
 }
 
 void TANTQUE()
@@ -1626,81 +1648,52 @@ void LIRE()
 
 void COND()
 {
-    EXPR();
-    RELOP();
-    EXPR();
+    printf("Entering COND\n");
+    EXPR(); // Parse the left-hand side of the condition
+    printf("Left-hand side of condition parsed. Current Token: %d, Lexeme: %s\n", SYM_COUR.CODE, SYM_COUR.NOM);
+
+    // Handle the relational operator or boolean variable
+    if (SYM_COUR.CODE == THEN_TOKEN)
+    {
+        // If the next token is 'then', treat it as `if <variable> = true`
+        printf("Handling boolean variable directly. Treating as `if <variable> = true`\n");
+        opRELOP = 1;      // Equality
+        GENERER2(LDI, 1); // Load `true` (1) for comparison
+    }
+    else
+    {
+        // Otherwise, parse the relational operator
+        RELOP();
+        EXPR(); // Parse the right-hand side of the condition
+    }
+
+    // Generate code for the relational operation
     switch (opRELOP)
     {
     case 1:
-        if (LOOP_LOGIC)
-        {
-            GENERER1(NEQ);
-            LOOP_LOGIC = 0;
-        }
-        else
-        {
-            GENERER1(EQL);
-        }
+        GENERER1(EQL); // Equality
         break;
     case 2:
-        if (LOOP_LOGIC)
-        {
-            GENERER1(EQL);
-            LOOP_LOGIC = 0;
-        }
-        else
-        {
-            GENERER1(NEQ);
-        }
+        GENERER1(NEQ); // Inequality
         break;
     case 3:
-        if (LOOP_LOGIC)
-        {
-            GENERER1(GEQ);
-            LOOP_LOGIC = 0;
-        }
-        else
-        {
-            GENERER1(LSS);
-        }
+        GENERER1(LSS); // Less than
         break;
     case 4:
-        if (LOOP_LOGIC)
-        {
-            GENERER1(LEQ);
-            LOOP_LOGIC = 0;
-        }
-        else
-        {
-            GENERER1(GTR);
-        }
+        GENERER1(GTR); // Greater than
         break;
     case 5:
-        if (LOOP_LOGIC)
-        {
-            GENERER1(GTR);
-            LOOP_LOGIC = 0;
-        }
-        else
-        {
-            GENERER1(LEQ);
-        }
+        GENERER1(LEQ); // Less than or equal
         break;
     case 6:
-        if (LOOP_LOGIC)
-        {
-            GENERER1(LSS);
-            LOOP_LOGIC = 0;
-        }
-        else
-        {
-            GENERER1(GEQ);
-        }
+        GENERER1(GEQ); // Greater than or equal
         break;
     default:
+        printf("Error in COND: Unexpected opRELOP %d\n", opRELOP);
         Erreur(ERREUR_ERR, "COND");
         break;
     }
+    printf("Exiting COND\n");
 }
 
 void EXPR()
@@ -1751,34 +1744,30 @@ void TERM()
 
 void FACT()
 {
-    // It�rer sur la table des symboles pour trouver une correspondance des noms
-    int i;
     switch (SYM_COUR.CODE)
     {
     case ID_TOKEN:
-
-        for (i = 0; i < TABLEINDEX; i++)
+        // Look up the variable in the symbol table
+        for (int i = 0; i < TABLEINDEX; i++)
         {
             if (strcmp(TABLESYM[i].NOM, SYM_COUR.NOM) == 0)
             {
-                // Empiler l'adresse de la constante ou de la variable trouv�e
+                // Load the address of the variable
                 GENERER2(LDA, TABLESYM[i].ADRESSE);
-                // Remplace cette adresse par sa valeur
+                // Load the value of the variable
                 GENERER1(LDV);
-
-                // printf("ID: %s\n", SYM_COUR.NOM);
                 break;
             }
         }
-
         Test_Symbole(ID_TOKEN, ID_ERR);
-
         break;
     case INTEGER_DATA_TOKEN:
-        // Empiler la valeur trouv�e
         GENERER2(LDI, SYM_COUR.val);
-
         Test_Symbole(INTEGER_DATA_TOKEN, INTEGER_DATA_ERR);
+        break;
+    case BOOLEAN_DATA_TOKEN:
+        GENERER2(LDI, SYM_COUR.val); // Load boolean value (0 or 1)
+        Test_Symbole(BOOLEAN_DATA_TOKEN, BOOLEAN_DATA_ERR);
         break;
     case PO_TOKEN:
         Test_Symbole(PO_TOKEN, PO_ERR);
@@ -1793,38 +1782,46 @@ void FACT()
 
 void RELOP()
 {
+    printf("Entering RELOP. Current Token: %d, Lexeme: %s\n", SYM_COUR.CODE, SYM_COUR.NOM);
     switch (SYM_COUR.CODE)
     {
     case EG_TOKEN:
+        printf("Handling EG_TOKEN\n");
         Test_Symbole(EG_TOKEN, EG_ERR);
-        opRELOP = 1;
+        opRELOP = 1; // Equality
         break;
     case DIFF_TOKEN:
+        printf("Handling DIFF_TOKEN\n");
         Test_Symbole(DIFF_TOKEN, DIFF_ERR);
-        opRELOP = 2;
+        opRELOP = 2; // Inequality
         break;
     case INF_TOKEN:
+        printf("Handling INF_TOKEN\n");
         Test_Symbole(INF_TOKEN, INF_ERR);
-        opRELOP = 3;
+        opRELOP = 3; // Less than
         break;
     case SUP_TOKEN:
+        printf("Handling SUP_TOKEN\n");
         Test_Symbole(SUP_TOKEN, SUP_ERR);
-        opRELOP = 4;
+        opRELOP = 4; // Greater than
         break;
     case INFEG_TOKEN:
+        printf("Handling INFEG_TOKEN\n");
         Test_Symbole(INFEG_TOKEN, INFEG_ERR);
-        opRELOP = 5;
+        opRELOP = 5; // Less than or equal
         break;
     case SUPEG_TOKEN:
+        printf("Handling SUPEG_TOKEN\n");
         Test_Symbole(SUPEG_TOKEN, SUPEG_ERR);
-        opRELOP = 6;
+        opRELOP = 6; // Greater than or equal
         break;
     default:
+        printf("Error in RELOP: Unexpected token %d\n", SYM_COUR.CODE);
         Erreur(ERREUR_ERR, "RELOP");
         break;
     }
+    printf("Exiting RELOP. opRELOP: %d\n", opRELOP);
 }
-
 void ADDOP()
 {
     switch (SYM_COUR.CODE)
@@ -2033,9 +2030,10 @@ int main()
 
     printf("Execution du programme faite.\n");
 
+    SavePCodeToFile(FICH_SORTIE);
+
     INTER_PCODE();
 
-    SavePCodeToFile(FICH_SORTIE);
     fclose(FICH_SORTIE);
 
     fclose(fichier);

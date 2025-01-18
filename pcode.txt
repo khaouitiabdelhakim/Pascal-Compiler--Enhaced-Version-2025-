@@ -1,0 +1,33 @@
+INT 	 5 
+LDA 	 0 
+LDI 	 13 
+STO 
+LDA 	 1 
+LDI 	 12 
+STO 
+LDA 	 2 
+LDI 	 15 
+STO 
+LDA 	 0 
+LDV 
+LDA 	 1 
+LDV 
+GTR 
+BZE 	 0 
+ADD 
+LDA 	 1 
+LDV 
+LDA 	 2 
+LDV 
+GTR 
+BZE 	 32 
+ADD 
+LDA 	 1 
+LDV 
+PRN 
+BRN 	 32 
+ADD 
+LDA 	 0 
+LDV 
+PRN 
+HLT 
